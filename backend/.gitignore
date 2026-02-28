@@ -1,0 +1,30 @@
+node_modules
+# Keep environment variables out of version control
+.env 
+.env.local
+.env.production
+.env.development
+.env.*.local
+
+# Prisma generated files
+/src/generated/prisma
+
+# Production unsafe files
+logs/
+*.log
+*.log.*
+.vscode/
+.idea/
+coverage/
+dist/
+build/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Lock files (optional - can be kept if using specific package manager)
+/package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
