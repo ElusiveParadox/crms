@@ -8,6 +8,7 @@ type UserProps = {
   id: string;
   email: string;
   role: UserRole;
+  institutionId: string;
 };
 
 export class UserFactory {
@@ -20,6 +21,7 @@ export class UserFactory {
         return new Faculty(props);
 
       case UserRole.ADMIN:
+      case UserRole.SUPER_ADMIN: 
         return new Admin(props);
 
       default:
