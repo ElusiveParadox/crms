@@ -1,0 +1,11 @@
+import { User, UserRole } from "./User";
+
+export class Student extends User {
+  constructor(props: { id: string; email: string }) {
+    super({ ...props, role: UserRole.STUDENT });
+  }
+
+  override canCreateBooking(): boolean {
+    return true;
+  }
+}
