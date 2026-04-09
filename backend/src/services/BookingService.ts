@@ -1,6 +1,5 @@
 import { prisma } from "../config/db";
 import { Booking } from "../models/Booking";
-import { User } from "../models/User";
 import { UserFactory } from "../patterns/factory/UserFactory";
 import { Resource } from "../models/Resource";
 import { StrictConflictStrategy } from "../patterns/strategy/StrictConflictStrategy";
@@ -22,7 +21,14 @@ export class BookingService {
       throw new DomainError("Resource not available");
     }
 
-    const resource = new Resource(resourceRaw);
+    const resource = new Resource({
+      id: resourceRaw.id,
+      name: resourceRaw.name,
+      type: resourceRaw.type,
+      capacity: resourceRaw.capacity,
+      institutionId: resourceRaw.institutionId ?? "",
+      isActive: resourceRaw.isActive,
+    });
     const domainUser = UserFactory.create(user as any);
 
     const conflicting = await prisma.booking.findFirst({
@@ -42,7 +48,7 @@ export class BookingService {
       throw new DomainError("Slot already occupied", 409);
     }
 
-    // Domain Booking 
+    // Domain Booking
     const booking = new Booking({
       id: crypto.randomUUID(),
       user: domainUser,
@@ -57,7 +63,7 @@ export class BookingService {
 
     // Strategy Validation
     booking.validateConflict(
-      [], // already filtered via DB
+      [], 
       new StrictConflictStrategy(),
       domainUser
     );
@@ -102,7 +108,14 @@ export class BookingService {
     }
 
     const domainUser = UserFactory.create(user as any);
-    const resource = new Resource(bookingRaw.resource);
+    const resource = new Resource({
+      id: bookingRaw.resource.id,
+      name: bookingRaw.resource.name,
+      type: bookingRaw.resource.type,
+      capacity: bookingRaw.resource.capacity,
+      institutionId: bookingRaw.resource.institutionId ?? "",
+      isActive: bookingRaw.resource.isActive,
+    });
 
     const booking = new Booking({
       id: bookingRaw.id,
@@ -113,7 +126,6 @@ export class BookingService {
     });
 
     booking.attachObserver(new NotificationObserver());
-
     booking.cancel(domainUser);
 
     return prisma.booking.update({
@@ -135,7 +147,14 @@ export class BookingService {
 
     const actor = UserFactory.create(user as any);
     const bookingUser = UserFactory.create(bookingRaw.user as any);
-    const resource = new Resource(bookingRaw.resource);
+    const resource = new Resource({
+      id: bookingRaw.resource.id,
+      name: bookingRaw.resource.name,
+      type: bookingRaw.resource.type,
+      capacity: bookingRaw.resource.capacity,
+      institutionId: bookingRaw.resource.institutionId ?? "",
+      isActive: bookingRaw.resource.isActive,
+    });
 
     const booking = new Booking({
       id: bookingRaw.id,
@@ -146,7 +165,6 @@ export class BookingService {
     });
 
     booking.attachObserver(new NotificationObserver());
-
     booking.approve(actor);
 
     return prisma.booking.update({
@@ -168,7 +186,14 @@ export class BookingService {
 
     const actor = UserFactory.create(user as any);
     const bookingUser = UserFactory.create(bookingRaw.user as any);
-    const resource = new Resource(bookingRaw.resource);
+    const resource = new Resource({
+      id: bookingRaw.resource.id,
+      name: bookingRaw.resource.name,
+      type: bookingRaw.resource.type,
+      capacity: bookingRaw.resource.capacity,
+      institutionId: bookingRaw.resource.institutionId ?? "",
+      isActive: bookingRaw.resource.isActive,
+    });
 
     const booking = new Booking({
       id: bookingRaw.id,
@@ -179,7 +204,6 @@ export class BookingService {
     });
 
     booking.attachObserver(new NotificationObserver());
-
     booking.reject(actor);
 
     return prisma.booking.update({

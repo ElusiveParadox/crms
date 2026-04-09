@@ -11,6 +11,7 @@ enum Role {
   STUDENT
   FACULTY
   ADMIN
+  SUPER_ADMIN
 }
 
 enum BookingStatus {
@@ -20,13 +21,29 @@ enum BookingStatus {
   CANCELLED
 }
 
+model Institution {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  domain    String?
+  deletedAt DateTime?
+
+  users     User[]
+  resources Resource[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model User {
-  id        String   @id @default(uuid())
-  name      String
-  email     String   @unique
-  password  String
-  role      Role
-  bookings  Booking[]
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String
+  role          Role      @default(STUDENT)
+  institutionId String?
+  deletedAt     DateTime?
+
+  institution   Institution? @relation(fields: [institutionId], references: [id])
+  bookings      Booking[]
   notifications Notification[]
 
   createdAt DateTime @default(now())
@@ -34,11 +51,17 @@ model User {
 }
 
 model Resource {
-  id          String    @id @default(uuid())
-  name        String
-  type        String
-  description String?
-  bookings    Booking[]
+  id            String    @id @default(uuid())
+  name          String
+  type          String
+  description   String?
+  capacity      Int       @default(0)
+  institutionId String?
+  isActive      Boolean   @default(true)
+  deletedAt     DateTime?
+
+  institution   Institution? @relation(fields: [institutionId], references: [id])
+  bookings      Booking[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

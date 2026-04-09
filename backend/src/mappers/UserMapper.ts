@@ -6,7 +6,7 @@ type PersistenceUser = {
   id: string;
   email: string;
   role: string;
-  institutionId: string;
+  institutionId: string | null;
 };
 
 export class UserMapper {
@@ -28,6 +28,7 @@ export class UserMapper {
       id: user.id,
       email: user.email,
       role: user.role,
+      institutionId: user.institutionId,
     };
   }
 }
