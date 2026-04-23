@@ -1,7 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { BookingService } from "../services/BookingService";
-
-const service = new BookingService();
+import { successResponse } from "../shared/response";
 
 /**
  * @swagger
@@ -9,8 +8,12 @@ const service = new BookingService();
  *   name: Bookings
  *   description: Booking management APIs
  */
-
 export class BookingController {
+  private service: BookingService;
+
+  constructor(service: BookingService) {
+    this.service = service;
+  }
 
   /**
    * @swagger
@@ -21,9 +24,15 @@ export class BookingController {
    */
   async create(req: Request, res: Response, next: NextFunction) {
     try {
-      const user = (req as any).user;
-      const booking = await service.create(user, req.body);
-      res.status(201).json(booking);
+      const user = req.user!;
+
+      const booking = await this.service.create(user, {
+        resourceId: req.body.resourceId,
+        startTime: new Date(req.body.startTime),
+        endTime: new Date(req.body.endTime),
+      });
+
+      return successResponse(res, booking, 201);
     } catch (err) {
       next(err);
     }
@@ -38,9 +47,11 @@ export class BookingController {
    */
   async myBookings(req: Request, res: Response, next: NextFunction) {
     try {
-      const user = (req as any).user;
-      const data = await service.getMyBookings(user);
-      res.json(data);
+      const user = req.user!;
+
+      const data = await this.service.getMyBookings(user);
+
+      return successResponse(res, data);
     } catch (err) {
       next(err);
     }
@@ -55,9 +66,12 @@ export class BookingController {
    */
   async cancel(req: Request, res: Response, next: NextFunction) {
     try {
-      const user = (req as any).user;
-      const result = await service.cancel(user, req.params.id as string);
-      res.json(result);
+      const user = req.user!;
+      const bookingId = req.params.id;
+
+      const result = await this.service.cancel(user, bookingId as string);
+
+      return successResponse(res, result);
     } catch (err) {
       next(err);
     }
@@ -72,9 +86,12 @@ export class BookingController {
    */
   async approve(req: Request, res: Response, next: NextFunction) {
     try {
-      const user = (req as any).user;
-      const result = await service.approve(user, req.params.id as string);
-      res.json(result);
+      const user = req.user!;
+      const bookingId = req.params.id;
+
+      const result = await this.service.approve(user, bookingId as string);
+
+      return successResponse(res, result);
     } catch (err) {
       next(err);
     }
@@ -89,9 +106,12 @@ export class BookingController {
    */
   async reject(req: Request, res: Response, next: NextFunction) {
     try {
-      const user = (req as any).user;
-      const result = await service.reject(user, req.params.id as string);
-      res.json(result);
+      const user = req.user!;
+      const bookingId = req.params.id;
+
+      const result = await this.service.reject(user, bookingId as string);
+
+      return successResponse(res, result);
     } catch (err) {
       next(err);
     }

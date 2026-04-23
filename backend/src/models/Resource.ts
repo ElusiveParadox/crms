@@ -5,7 +5,7 @@ type ResourceProps = {
   name: string;
   type: string;
   capacity: number;
-  institutionId: string;
+  institutionId: string | null;
   isActive?: boolean;
 };
 
@@ -14,7 +14,7 @@ export class Resource {
   public readonly name: string;
   public readonly type: string;
   public readonly capacity: number;
-  public readonly institutionId: string;
+  public readonly institutionId: string | null;
   private isActive: boolean;
 
   constructor(props: ResourceProps) {
