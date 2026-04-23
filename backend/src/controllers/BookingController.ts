@@ -1,119 +1,110 @@
-import { Request, Response, NextFunction } from "express";
+import { NextFunction, Request, Response } from "express";
 import { BookingService } from "../services/BookingService";
 import { successResponse } from "../shared/response";
+import {
+  BookingCreateDto,
+  BookingParamDto,
+  BookingQueryDto,
+  BookingUpdateDto,
+} from "../validators/booking.validator";
 
-/**
- * @swagger
- * tags:
- *   name: Bookings
- *   description: Booking management APIs
- */
+const bookingService = new BookingService();
+
 export class BookingController {
-  private service: BookingService;
-
-  constructor(service: BookingService) {
-    this.service = service;
-  }
-
-  /**
-   * @swagger
-   * /bookings:
-   *   post:
-   *     summary: Create booking
-   *     tags: [Bookings]
-   */
   async create(req: Request, res: Response, next: NextFunction) {
     try {
       const user = req.user!;
-
-      const booking = await this.service.create(user, {
-        resourceId: req.body.resourceId,
-        startTime: new Date(req.body.startTime),
-        endTime: new Date(req.body.endTime),
-      });
+      const dto = req.body as BookingCreateDto;
+      const booking = await bookingService.create(user, dto);
 
       return successResponse(res, booking, 201);
-    } catch (err) {
-      next(err);
+    } catch (error) {
+      next(error);
     }
   }
 
-  /**
-   * @swagger
-   * /bookings/me:
-   *   get:
-   *     summary: Get my bookings
-   *     tags: [Bookings]
-   */
-  async myBookings(req: Request, res: Response, next: NextFunction) {
+  async getAll(req: Request, res: Response, next: NextFunction) {
     try {
       const user = req.user!;
+      const query = req.query as unknown as BookingQueryDto;
+      const result = await bookingService.getAll(user, query);
 
-      const data = await this.service.getMyBookings(user);
-
-      return successResponse(res, data);
-    } catch (err) {
-      next(err);
+      return successResponse(res, result.data, 200, result.meta);
+    } catch (error) {
+      next(error);
     }
   }
 
-  /**
-   * @swagger
-   * /bookings/{id}/cancel:
-   *   post:
-   *     summary: Cancel booking
-   *     tags: [Bookings]
-   */
+  async getById(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = req.user!;
+      const { id } = req.params as unknown as BookingParamDto;
+      const booking = await bookingService.getById(user, id);
+
+      return successResponse(res, booking);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async update(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = req.user!;
+      const { id } = req.params as unknown as BookingParamDto;
+      const dto = req.body as BookingUpdateDto;
+      const booking = await bookingService.update(user, id, dto);
+
+      return successResponse(res, booking);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async delete(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = req.user!;
+      const { id } = req.params as unknown as BookingParamDto;
+      const booking = await bookingService.delete(user, id);
+
+      return successResponse(res, booking);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async cancel(req: Request, res: Response, next: NextFunction) {
     try {
       const user = req.user!;
-      const bookingId = req.params.id;
+      const { id } = req.params as unknown as BookingParamDto;
+      const booking = await bookingService.cancel(user, id);
 
-      const result = await this.service.cancel(user, bookingId as string);
-
-      return successResponse(res, result);
-    } catch (err) {
-      next(err);
+      return successResponse(res, booking);
+    } catch (error) {
+      next(error);
     }
   }
 
-  /**
-   * @swagger
-   * /bookings/{id}/approve:
-   *   post:
-   *     summary: Approve booking (Admin only)
-   *     tags: [Bookings]
-   */
   async approve(req: Request, res: Response, next: NextFunction) {
     try {
       const user = req.user!;
-      const bookingId = req.params.id;
+      const { id } = req.params as unknown as BookingParamDto;
+      const booking = await bookingService.approve(user, id);
 
-      const result = await this.service.approve(user, bookingId as string);
-
-      return successResponse(res, result);
-    } catch (err) {
-      next(err);
+      return successResponse(res, booking);
+    } catch (error) {
+      next(error);
     }
   }
 
-  /**
-   * @swagger
-   * /bookings/{id}/reject:
-   *   post:
-   *     summary: Reject booking (Admin only)
-   *     tags: [Bookings]
-   */
   async reject(req: Request, res: Response, next: NextFunction) {
     try {
       const user = req.user!;
-      const bookingId = req.params.id;
+      const { id } = req.params as unknown as BookingParamDto;
+      const booking = await bookingService.reject(user, id);
 
-      const result = await this.service.reject(user, bookingId as string);
-
-      return successResponse(res, result);
-    } catch (err) {
-      next(err);
+      return successResponse(res, booking);
+    } catch (error) {
+      next(error);
     }
   }
 }

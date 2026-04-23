@@ -1,113 +1,97 @@
-import { Request, Response, NextFunction } from "express";
+import { NextFunction, Request, Response } from "express";
 import { InstitutionService } from "../services/InstitutionService";
+import { successResponse } from "../shared/response";
+import {
+  InstitutionCreateDto,
+  InstitutionParamDto,
+  InstitutionQueryDto,
+  InstitutionUpdateDto,
+} from "../validators/institution.validator";
 
-const service = new InstitutionService();
-
-/**
- * @swagger
- * tags:
- *   name: Institutions
- *   description: Institution management APIs
- */
+const institutionService = new InstitutionService();
 
 export class InstitutionController {
-  
-  /**
-   * @swagger
-   * /institutions:
-   *   get:
-   *     summary: Search institutions
-   *     tags: [Institutions]
-   *     parameters:
-   *       - in: query
-   *         name: query
-   *         required: true
-   *         schema:
-   *           type: string
-   *         description: Search query for institution name
-   *     responses:
-   *       200:
-   *         description: List of institutions
-   */
-  async search(req: Request, res: Response, next: NextFunction) {
-    try {
-      const query = req.query.query as string;
-      const result = await service.search(query);
-      res.json(result);
-    } catch (err) {
-      next(err);
-    }
-  }
-
-  /**
-   * @swagger
-   * /institutions:
-   *   post:
-   *     summary: Create a new institution
-   *     tags: [Institutions]
-   *     requestBody:
-   *       required: true
-   *       content:
-   *         application/json:
-   *           schema:
-   *             type: object
-   *             required: [name]
-   *             properties:
-   *               name:
-   *                 type: string
-   *     responses:
-   *       201:
-   *         description: Institution created successfully
-   *       400:
-   *         description: Validation error
-   */
   async create(req: Request, res: Response, next: NextFunction) {
     try {
-      const { name } = req.body;
-      const user = (req as any).user;
+      const user = req.user!;
+      const dto = req.body as InstitutionCreateDto;
+      const institution = await institutionService.create(user, dto);
 
-      const institution = await service.create(name, user.id);
-
-      res.status(201).json(institution);
-    } catch (err) {
-      next(err);
+      return successResponse(res, institution, 201);
+    } catch (error) {
+      next(error);
     }
   }
 
-  /**
-   * @swagger
-   * /institutions/join:
-   *   post:
-   *     summary: Join an institution
-   *     tags: [Institutions]
-   *     requestBody:
-   *       required: true
-   *       content:
-   *         application/json:
-   *           schema:
-   *             type: object
-   *             required: [institutionId]
-   *             properties:
-   *               institutionId:
-   *                 type: string
-   *     responses:
-   *       200:
-   *         description: Joined successfully
-   *       400:
-   *         description: Invalid request
-   *       404:
-   *         description: Institution not found
-   */
+  async getAll(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = req.user!;
+      const query = req.query as unknown as InstitutionQueryDto;
+      const result = await institutionService.getAll(user, query);
+
+      return successResponse(res, result.data, 200, result.meta);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getById(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = req.user!;
+      const { id } = req.params as unknown as InstitutionParamDto;
+      const institution = await institutionService.getById(user, id);
+
+      return successResponse(res, institution);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async update(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = req.user!;
+      const { id } = req.params as unknown as InstitutionParamDto;
+      const dto = req.body as InstitutionUpdateDto;
+      const institution = await institutionService.update(user, id, dto);
+
+      return successResponse(res, institution);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async delete(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = req.user!;
+      const { id } = req.params as unknown as InstitutionParamDto;
+      const institution = await institutionService.delete(user, id);
+
+      return successResponse(res, institution);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async search(req: Request, res: Response, next: NextFunction) {
+    try {
+      const query = String(req.query.query ?? "");
+      const institutions = await institutionService.search(query);
+
+      return successResponse(res, institutions);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async join(req: Request, res: Response, next: NextFunction) {
     try {
-      const { institutionId } = req.body;
-      const user = (req as any).user;
+      const user = req.user!;
+      const institutionId = String(req.body.institutionId);
+      const result = await institutionService.joinInstitution(user.id, institutionId);
 
-      const result = await service.joinInstitution(user.id, institutionId);
-
-      res.json(result);
-    } catch (err) {
-      next(err);
+      return successResponse(res, result);
+    } catch (error) {
+      next(error);
     }
   }
 }

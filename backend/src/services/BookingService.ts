@@ -1,272 +1,408 @@
+import { BookingStatus, Prisma } from "@prisma/client";
+import crypto from "crypto";
 import { prisma } from "../config/db";
-import { Booking } from "../models/Booking";
-import { UserFactory } from "../patterns/factory/UserFactory";
-import { UserRole } from "../models/User";
-import { Resource } from "../models/Resource";
-import { StrictConflictStrategy } from "../patterns/strategy/StrictConflictStrategy";
-import { NotificationObserver } from "../patterns/observer/NotificationObserver";
-import { DomainError } from "../shared/DomainError";
 import { eventBus } from "../events/EventBus";
 import { EventType } from "../events/EventTypes";
-import crypto from "crypto";
+import { Booking } from "../models/Booking";
+import { Resource } from "../models/Resource";
+import { User, UserRole } from "../models/User";
+import { UserFactory } from "../patterns/factory/UserFactory";
+import { NotificationObserver } from "../patterns/observer/NotificationObserver";
+import { StrictConflictStrategy } from "../patterns/strategy/StrictConflictStrategy";
+import { DomainError } from "../shared/DomainError";
+import { buildPagination, PaginatedResult } from "../shared/query";
+import {
+  BookingCreateDto,
+  BookingQueryDto,
+  BookingUpdateDto,
+} from "../validators/booking.validator";
+
+const ACTIVE_BOOKING_STATUSES: BookingStatus[] = [
+  BookingStatus.PENDING,
+  BookingStatus.APPROVED,
+];
+
+const bookingInclude = {
+  user: {
+    select: {
+      id: true,
+      email: true,
+      role: true,
+      institutionId: true,
+    },
+  },
+  resource: true,
+} satisfies Prisma.BookingInclude;
+
+type BookingRecord = Prisma.BookingGetPayload<{ include: typeof bookingInclude }>;
 
 export class BookingService {
+  async create(actor: User, dto: BookingCreateDto): Promise<BookingRecord> {
+    this.ensureInstitutionScoped(actor);
 
-  // -------------------------------
-  // CREATE BOOKING
-  // -------------------------------
-  async create(user: any, data: any) {
-    const { resourceId, startTime, endTime } = data;
+    const bookingUserId =
+      actor.canApproveBooking() && dto.userId ? dto.userId : actor.id;
+    const bookingUser = await this.getBookingUser(actor, bookingUserId);
+    const resource = await this.getActiveResource(actor, dto.resourceId);
 
-    if (!resourceId || !startTime || !endTime) {
-      throw new DomainError("Missing booking data");
-    }
+    this.validateBookingRange(dto.startTime, dto.endTime);
+    await this.ensureBookingConflict(resource.id, dto.startTime, dto.endTime);
 
-    if (new Date(startTime) >= new Date(endTime)) {
-      throw new DomainError("Invalid time range");
-    }
-
-    if (new Date(startTime) <= new Date()) {
-      throw new DomainError("Booking must be in the future");
-    }
-
-    if (!user.institutionId) {
-      throw new DomainError("User must belong to an institution");
-    }
-
-    const domainUser = UserFactory.create(user as any);
+    const domainUser = UserFactory.create({
+      id: bookingUser.id,
+      email: bookingUser.email,
+      role: bookingUser.role as unknown as UserRole,
+      institutionId: bookingUser.institutionId,
+    });
 
     if (!domainUser.canCreateBooking()) {
-      throw new DomainError("Permission denied");
-    }
-
-    const resourceRaw = await prisma.resource.findUnique({
-      where: { id: resourceId }
-    });
-
-    if (!resourceRaw || resourceRaw.deletedAt || !resourceRaw.isActive) {
-      throw new DomainError("Resource not available");
-    }
-
-    if (resourceRaw.institutionId !== user.institutionId) {
-      throw new DomainError("Cross-institution booking not allowed");
-    }
-
-    const resource = new Resource(resourceRaw);
-
-    const conflicting = await prisma.booking.findFirst({
-      where: {
-        resourceId,
-        status: { in: ["PENDING", "APPROVED"] },
-        OR: [
-          {
-            startTime: { lt: new Date(endTime) },
-            endTime: { gt: new Date(startTime) }
-          }
-        ]
-      }
-    });
-
-    if (conflicting) {
-      throw new DomainError("Slot already occupied", 409);
+      throw new DomainError("Forbidden", 403);
     }
 
     const booking = new Booking({
       id: crypto.randomUUID(),
       user: domainUser,
-      resource,
-      startTime: new Date(startTime),
-      endTime: new Date(endTime),
+      resource: new Resource(resource),
+      startTime: dto.startTime,
+      endTime: dto.endTime,
     });
 
-    const observer = new NotificationObserver();
-    booking.attachObserver(observer);
-
+    booking.attachObserver(new NotificationObserver());
     booking.validateConflict([], new StrictConflictStrategy(), domainUser);
 
-    const saved = await prisma.booking.create({
+    const createdBooking = await prisma.booking.create({
       data: {
         id: booking.id,
-        userId: domainUser.id,
+        userId: bookingUser.id,
         resourceId: resource.id,
-        startTime: booking.startTime,
-        endTime: booking.endTime,
-        status: "PENDING"
+        startTime: dto.startTime,
+        endTime: dto.endTime,
+        status: dto.status ?? BookingStatus.PENDING,
       },
-      include: {
-        user: true,
-        resource: true
-      }
+      include: bookingInclude,
     });
 
     await eventBus.publish({
       type: EventType.BOOKING_CREATED,
       payload: {
-        bookingId: saved.id,
-        userId: saved.userId,
-        resourceId: saved.resourceId
+        bookingId: createdBooking.id,
+        userId: createdBooking.userId,
+        resourceId: createdBooking.resourceId,
       },
-      timestamp: new Date()
+      timestamp: new Date(),
     });
 
-    return saved;
+    return createdBooking;
   }
 
-  // -------------------------------
-  // MY BOOKINGS
-  // -------------------------------
-  async getMyBookings(user: any) {
-    if (!user.id) {
-      throw new DomainError("Invalid user");
-    }
+  async update(actor: User, id: string, dto: BookingUpdateDto): Promise<BookingRecord> {
+    this.ensureInstitutionScoped(actor);
 
-    return prisma.booking.findMany({
-      where: { userId: user.id },
-      include: { resource: true },
-      orderBy: { startTime: "asc" }
+    const existingBooking = await this.getBookingRecord(actor, id);
+    this.ensureBookingAccess(actor, existingBooking.userId);
+
+    const nextResourceId = dto.resourceId ?? existingBooking.resourceId;
+    const nextUserId =
+      actor.canApproveBooking() && dto.userId ? dto.userId : existingBooking.userId;
+    const nextStartTime = dto.startTime ?? existingBooking.startTime;
+    const nextEndTime = dto.endTime ?? existingBooking.endTime;
+
+    this.validateBookingRange(nextStartTime, nextEndTime);
+    await this.getActiveResource(actor, nextResourceId);
+    await this.getBookingUser(actor, nextUserId);
+    await this.ensureBookingConflict(nextResourceId, nextStartTime, nextEndTime, id);
+
+    return prisma.booking.update({
+      where: { id },
+      data: {
+        resourceId: nextResourceId,
+        userId: nextUserId,
+        startTime: nextStartTime,
+        endTime: nextEndTime,
+        ...(dto.status ? { status: dto.status } : {}),
+      },
+      include: bookingInclude,
     });
   }
 
-  // -------------------------------
-  // CANCEL
-  // -------------------------------
-  async cancel(user: any, bookingId: string) {
-    const bookingRaw = await prisma.booking.findUnique({
-      where: { id: bookingId },
-      include: { resource: true, user: true }
+  async delete(actor: User, id: string): Promise<BookingRecord> {
+    this.ensureInstitutionScoped(actor);
+
+    const existingBooking = await this.getBookingRecord(actor, id);
+    this.ensureBookingAccess(actor, existingBooking.userId);
+
+    return prisma.booking.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+      include: bookingInclude,
     });
+  }
 
-    if (!bookingRaw) {
-      throw new DomainError("Booking not found");
-    }
+  async getById(actor: User, id: string): Promise<BookingRecord> {
+    this.ensureInstitutionScoped(actor);
 
-    if (bookingRaw.userId !== user.id) {
-      throw new DomainError("Unauthorized");
-    }
+    const booking = await this.getBookingRecord(actor, id);
+    this.ensureBookingAccess(actor, booking.userId);
 
-    const actor = UserFactory.create(user as any);
-    const resource = new Resource(bookingRaw.resource);
+    return booking;
+  }
 
-    const booking = new Booking({
-      id: bookingRaw.id,
-      user: actor,
-      resource,
-      startTime: bookingRaw.startTime,
-      endTime: bookingRaw.endTime,
+  async getAll(
+    actor: User,
+    query: BookingQueryDto
+  ): Promise<PaginatedResult<BookingRecord>> {
+    this.ensureInstitutionScoped(actor);
+
+    const { page, limit, skip } = buildPagination(query);
+
+    const where: Prisma.BookingWhereInput = {
+      deletedAt: null,
+      resource: {
+        institutionId: actor.institutionId,
+        deletedAt: null,
+      },
+      user: {
+        institutionId: actor.institutionId,
+        deletedAt: null,
+      },
+      ...(actor.canApproveBooking() ? {} : { userId: actor.id }),
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.resourceId ? { resourceId: query.resourceId } : {}),
+      ...(query.userId && actor.canApproveBooking() ? { userId: query.userId } : {}),
+      ...(query.startDate || query.endDate
+        ? {
+            startTime: {
+              ...(query.startDate ? { gte: query.startDate } : {}),
+              ...(query.endDate ? { lte: query.endDate } : {}),
+            },
+          }
+        : {}),
+    };
+
+    const [bookings, total] = await prisma.$transaction([
+      prisma.booking.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: {
+          [query.sort]: query.order,
+        },
+        include: bookingInclude,
+      }),
+      prisma.booking.count({ where }),
+    ]);
+
+    return {
+      data: bookings,
+      meta: { page, limit, total },
+    };
+  }
+
+  async getMyBookings(actor: User) {
+    return this.getAll(actor, {
+      page: 1,
+      limit: 10,
+      sort: "startTime",
+      order: "asc",
     });
+  }
 
+  async cancel(actor: User, bookingId: string): Promise<BookingRecord> {
+    this.ensureInstitutionScoped(actor);
+
+    const bookingRecord = await this.getBookingRecord(actor, bookingId);
+    this.ensureBookingAccess(actor, bookingRecord.userId);
+
+    const booking = this.createDomainBooking(bookingRecord);
     booking.attachObserver(new NotificationObserver());
     booking.cancel(actor);
 
-    const updated = await prisma.booking.update({
+    const updatedBooking = await prisma.booking.update({
       where: { id: bookingId },
-      data: { status: "CANCELLED" }
+      data: { status: BookingStatus.CANCELLED },
+      include: bookingInclude,
     });
 
     await eventBus.publish({
       type: EventType.BOOKING_CANCELLED,
       payload: { bookingId },
-      timestamp: new Date()
+      timestamp: new Date(),
     });
 
-    return updated;
+    return updatedBooking;
   }
 
-  // -------------------------------
-  // APPROVE
-  // -------------------------------
-  async approve(user: any, bookingId: string) {
-    const bookingRaw = await prisma.booking.findUnique({
-      where: { id: bookingId },
-      include: { user: true, resource: true }
-    });
-
-    if (!bookingRaw) {
-      throw new DomainError("Booking not found");
-    }
-
-    const actor = UserFactory.create(user as any);
-    const bookingUser = UserFactory.create({
-      ...bookingRaw.user,
-      role: bookingRaw.user.role as unknown as UserRole
-    });
-    const resource = new Resource(bookingRaw.resource);
+  async approve(actor: User, bookingId: string): Promise<BookingRecord> {
+    this.ensureInstitutionScoped(actor);
 
     if (!actor.canApproveBooking()) {
-      throw new DomainError("Permission denied");
+      throw new DomainError("Forbidden", 403);
     }
 
-    const booking = new Booking({
-      id: bookingRaw.id,
-      user: bookingUser,
-      resource,
-      startTime: bookingRaw.startTime,
-      endTime: bookingRaw.endTime,
-    });
-
+    const bookingRecord = await this.getBookingRecord(actor, bookingId);
+    const booking = this.createDomainBooking(bookingRecord);
     booking.attachObserver(new NotificationObserver());
     booking.approve(actor);
 
-    const updated = await prisma.booking.update({
+    const updatedBooking = await prisma.booking.update({
       where: { id: bookingId },
-      data: { status: "APPROVED" }
+      data: { status: BookingStatus.APPROVED },
+      include: bookingInclude,
     });
 
     await eventBus.publish({
       type: EventType.BOOKING_APPROVED,
       payload: { bookingId },
-      timestamp: new Date()
+      timestamp: new Date(),
     });
 
-    return updated;
+    return updatedBooking;
   }
 
-  // -------------------------------
-  // REJECT
-  // -------------------------------
-  async reject(user: any, bookingId: string) {
-    const bookingRaw = await prisma.booking.findUnique({
-      where: { id: bookingId },
-      include: { user: true, resource: true }
-    });
-
-    if (!bookingRaw) {
-      throw new DomainError("Booking not found");
-    }
-
-    const actor = UserFactory.create(user as any);
-    const bookingUser = UserFactory.create({
-      ...bookingRaw.user,
-      role: bookingRaw.user.role as unknown as UserRole
-    });
-    const resource = new Resource(bookingRaw.resource);
+  async reject(actor: User, bookingId: string): Promise<BookingRecord> {
+    this.ensureInstitutionScoped(actor);
 
     if (!actor.canApproveBooking()) {
-      throw new DomainError("Permission denied");
+      throw new DomainError("Forbidden", 403);
     }
 
-    const booking = new Booking({
-      id: bookingRaw.id,
-      user: bookingUser,
-      resource,
-      startTime: bookingRaw.startTime,
-      endTime: bookingRaw.endTime,
-    });
-
+    const bookingRecord = await this.getBookingRecord(actor, bookingId);
+    const booking = this.createDomainBooking(bookingRecord);
     booking.attachObserver(new NotificationObserver());
     booking.reject(actor);
 
-    const updated = await prisma.booking.update({
+    const updatedBooking = await prisma.booking.update({
       where: { id: bookingId },
-      data: { status: "REJECTED" }
+      data: { status: BookingStatus.REJECTED },
+      include: bookingInclude,
     });
 
     await eventBus.publish({
       type: EventType.BOOKING_REJECTED,
       payload: { bookingId },
-      timestamp: new Date()
+      timestamp: new Date(),
     });
 
-    return updated;
+    return updatedBooking;
+  }
+
+  private ensureInstitutionScoped(actor: User): asserts actor is User & {
+    institutionId: string;
+  } {
+    if (!actor.institutionId) {
+      throw new DomainError("Institution context is required", 400);
+    }
+  }
+
+  private validateBookingRange(startTime: Date, endTime: Date) {
+    if (startTime >= endTime) {
+      throw new DomainError("Invalid booking time range", 400);
+    }
+
+    if (startTime <= new Date()) {
+      throw new DomainError("Booking must be in the future", 400);
+    }
+  }
+
+  private async getActiveResource(actor: User, resourceId: string) {
+    const resource = await prisma.resource.findFirst({
+      where: {
+        id: resourceId,
+        institutionId: actor.institutionId,
+        deletedAt: null,
+        isActive: true,
+      },
+    });
+
+    if (!resource) {
+      throw new DomainError("Resource not found", 404);
+    }
+
+    return resource;
+  }
+
+  private async getBookingUser(actor: User, userId: string) {
+    const bookingUser = await prisma.user.findFirst({
+      where: {
+        id: userId,
+        institutionId: actor.institutionId,
+        deletedAt: null,
+      },
+    });
+
+    if (!bookingUser) {
+      throw new DomainError("User not found", 404);
+    }
+
+    return bookingUser;
+  }
+
+  private async ensureBookingConflict(
+    resourceId: string,
+    startTime: Date,
+    endTime: Date,
+    bookingIdToExclude?: string
+  ) {
+    const conflict = await prisma.booking.findFirst({
+      where: {
+        resourceId,
+        deletedAt: null,
+        status: { in: ACTIVE_BOOKING_STATUSES },
+        ...(bookingIdToExclude ? { id: { not: bookingIdToExclude } } : {}),
+        startTime: { lt: endTime },
+        endTime: { gt: startTime },
+      },
+    });
+
+    if (conflict) {
+      throw new DomainError("Slot already occupied", 409);
+    }
+  }
+
+  private async getBookingRecord(actor: User, bookingId: string): Promise<BookingRecord> {
+    const booking = await prisma.booking.findFirst({
+      where: {
+        id: bookingId,
+        deletedAt: null,
+        resource: {
+          institutionId: actor.institutionId,
+          deletedAt: null,
+        },
+        user: {
+          institutionId: actor.institutionId,
+          deletedAt: null,
+        },
+      },
+      include: bookingInclude,
+    });
+
+    if (!booking) {
+      throw new DomainError("Booking not found", 404);
+    }
+
+    return booking;
+  }
+
+  private ensureBookingAccess(actor: User, bookingUserId: string) {
+    if (actor.id !== bookingUserId && !actor.canApproveBooking()) {
+      throw new DomainError("Forbidden", 403);
+    }
+  }
+
+  private createDomainBooking(bookingRecord: BookingRecord) {
+    const bookingUser = UserFactory.create({
+      id: bookingRecord.user.id,
+      email: bookingRecord.user.email,
+      role: bookingRecord.user.role as unknown as UserRole,
+      institutionId: bookingRecord.user.institutionId,
+    });
+
+    return new Booking({
+      id: bookingRecord.id,
+      user: bookingUser,
+      resource: new Resource(bookingRecord.resource),
+      startTime: bookingRecord.startTime,
+      endTime: bookingRecord.endTime,
+    });
   }
 }

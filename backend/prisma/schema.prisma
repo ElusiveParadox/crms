@@ -77,6 +77,7 @@ model Booking {
   startTime   DateTime
   endTime     DateTime
   status      BookingStatus @default(PENDING)
+  deletedAt   DateTime?
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

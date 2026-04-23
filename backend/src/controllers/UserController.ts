@@ -1,50 +1,74 @@
-import { Request, Response, NextFunction } from "express";
+import { NextFunction, Request, Response } from "express";
 import { UserService } from "../services/UserService";
-import { UserMapper } from "../mappers/UserMapper";
+import { successResponse } from "../shared/response";
+import {
+  UserCreateDto,
+  UserParamDto,
+  UserQueryDto,
+  UserUpdateDto,
+} from "../validators/user.validator";
 
 const userService = new UserService();
 
 export class UserController {
-  async getInstitutionUsers(req: Request, res: Response, next: NextFunction) {
+  async create(req: Request, res: Response, next: NextFunction) {
     try {
-      const { institutionId } = (req as any).user;
-      const users = await userService.getUsersByInstitution(institutionId);
-      
-      const dtos = users.map(u => {
-        const domain = UserMapper.toDomain(u as any);
-        return UserMapper.toDTO(domain);
-      });
+      const user = req.user!;
+      const dto = req.body as UserCreateDto;
+      const createdUser = await userService.create(user, dto);
 
-      res.json(dtos);
-    } catch (err) {
-      next(err);
+      return successResponse(res, createdUser, 201);
+    } catch (error) {
+      next(error);
     }
   }
 
-  async updateRole(req: Request, res: Response, next: NextFunction) {
+  async getAll(req: Request, res: Response, next: NextFunction) {
     try {
-      const actor = (req as any).user;
-      const { userId } = req.params;
-      const { role } = req.body;
+      const user = req.user!;
+      const query = req.query as unknown as UserQueryDto;
+      const result = await userService.getAll(user, query);
 
-      const updated = await userService.updateRole(actor, userId as string, role);
-      const domain = UserMapper.toDomain(updated as any);
-
-      res.json(UserMapper.toDTO(domain));
-    } catch (err) {
-      next(err);
+      return successResponse(res, result.data, 200, result.meta);
+    } catch (error) {
+      next(error);
     }
   }
 
-  async softDelete(req: Request, res: Response, next: NextFunction) {
+  async getById(req: Request, res: Response, next: NextFunction) {
     try {
-      const actor = (req as any).user;
-      const { userId } = req.params;
+      const user = req.user!;
+      const { id } = req.params as unknown as UserParamDto;
+      const userRecord = await userService.getById(user, id);
 
-      await userService.softDelete(actor, userId as string);
-      res.json({ message: "User deactivated successfully" });
-    } catch (err) {
-      next(err);
+      return successResponse(res, userRecord);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async update(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = req.user!;
+      const { id } = req.params as unknown as UserParamDto;
+      const dto = req.body as UserUpdateDto;
+      const updatedUser = await userService.update(user, id, dto);
+
+      return successResponse(res, updatedUser);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async delete(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = req.user!;
+      const { id } = req.params as unknown as UserParamDto;
+      const deletedUser = await userService.delete(user, id);
+
+      return successResponse(res, deletedUser);
+    } catch (error) {
+      next(error);
     }
   }
 }

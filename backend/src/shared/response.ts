@@ -1,21 +1,16 @@
+import { Response } from "express";
+
+type SuccessMeta = Record<string, unknown>;
+
 export const successResponse = (
-  res: any,
+  res: Response,
   data: unknown,
-  statusCode = 200
+  statusCode = 200,
+  meta: SuccessMeta = {}
 ) => {
   return res.status(statusCode).json({
     success: true,
     data,
-  });
-};
-
-export const errorResponse = (
-  res: any,
-  message: string,
-  statusCode = 400
-) => {
-  return res.status(statusCode).json({
-    success: false,
-    message,
+    meta,
   });
 };

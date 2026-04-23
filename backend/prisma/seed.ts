@@ -1,8 +1,11 @@
 import "dotenv/config";
+import { Role, User as PrismaUser, Resource as PrismaResource } from "@prisma/client";
 import { prisma } from "../src/config/db";
-import { InstitutionService } from "../src/services/InstitutionService";
 import { BookingService } from "../src/services/BookingService";
+import { InstitutionService } from "../src/services/InstitutionService";
+import { UserFactory } from "../src/patterns/factory/UserFactory";
 import { DomainError } from "../src/shared/DomainError";
+import { UserRole } from "../src/models/User";
 
 const institutionService = new InstitutionService();
 const bookingService = new BookingService();
@@ -24,62 +27,58 @@ async function createBaseUser() {
     data: {
       email: randomEmail("owner"),
       passwordHash: "temp_hash",
-      role: "STUDENT",
-      institutionId: null
-    }
+      role: Role.STUDENT,
+      institutionId: null,
+    },
   });
 }
 
 async function main() {
   console.log("Seeding started...");
 
-  const allUsers: any[] = [];
-  const allResources: any[] = [];
+  const allUsers: PrismaUser[] = [];
+  const allResources: PrismaResource[] = [];
 
-  // -------------------------------
-  // MULTI-TENANT LOOP
-  // -------------------------------
   for (let i = 0; i < 5; i++) {
     const baseUser = await createBaseUser();
 
     const institution = await institutionService.create(
-      `University_${i}`,
-      baseUser.id
+      UserFactory.create({
+        id: baseUser.id,
+        email: baseUser.email,
+        role: baseUser.role as unknown as UserRole,
+        institutionId: baseUser.institutionId,
+      }),
+      {
+        name: `University_${i}`,
+      }
     );
 
     console.log(`Created ${institution.name}`);
 
-    // SUPER ADMIN 
     const superAdmin = await prisma.user.findUnique({
-      where: { id: baseUser.id }
+      where: { id: baseUser.id },
     });
 
-    if (superAdmin) allUsers.push(superAdmin);
+    if (superAdmin) {
+      allUsers.push(superAdmin);
+    }
 
-    // -------------------------------
-    // USERS
-    // -------------------------------
     for (let j = 0; j < 60; j++) {
-      const role =
-        j < 5 ? "ADMIN" :
-        j < 15 ? "FACULTY" :
-        "STUDENT";
+      const role = j < 5 ? Role.ADMIN : j < 15 ? Role.FACULTY : Role.STUDENT;
 
       const user = await prisma.user.create({
         data: {
           email: randomEmail(role.toLowerCase()),
           passwordHash: "temp_hash",
           role,
-          institutionId: institution.id
-        }
+          institutionId: institution.id,
+        },
       });
 
       allUsers.push(user);
     }
 
-    // -------------------------------
-    // RESOURCES
-    // -------------------------------
     const types = ["CLASSROOM", "LAB", "AUDITORIUM"];
 
     for (let r = 0; r < 20; r++) {
@@ -88,8 +87,8 @@ async function main() {
           name: `Resource_${i}_${r}`,
           type: types[random(0, types.length - 1)]!,
           capacity: random(20, 200),
-          institutionId: institution.id
-        }
+          institutionId: institution.id,
+        },
       });
 
       allResources.push(resource);
@@ -98,79 +97,82 @@ async function main() {
 
   console.log("Users & Resources created");
 
-  // -------------------------------
-  // BOOKINGS 
-  // -------------------------------
-  const students = allUsers.filter(u => u.role === "STUDENT");
+  const students = allUsers.filter((user) => user.role === Role.STUDENT);
+  const admins = allUsers.filter(
+    (user) => user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN
+  );
 
   let success = 0;
   let failed = 0;
 
   for (let i = 0; i < 200; i++) {
-    const user = students[random(0, students.length - 1)];
+    const bookingUser = students[random(0, students.length - 1)];
+
+    if (!bookingUser) {
+      continue;
+    }
 
     const resources = allResources.filter(
-      r => r.institutionId === user.institutionId
+      (resource) => resource.institutionId === bookingUser.institutionId
     );
-
     const resource = resources[random(0, resources.length - 1)];
 
+    if (!resource) {
+      continue;
+    }
+
+    const institutionAdmin = admins.find(
+      (admin) => admin.institutionId === bookingUser.institutionId
+    );
     const { start, end } = futureSlot();
 
     try {
       const booking = await bookingService.create(
-        {
-          id: user.id,
-          role: user.role,
-          institutionId: user.institutionId
-        },
+        UserFactory.create({
+          id: bookingUser.id,
+          email: bookingUser.email,
+          role: bookingUser.role as unknown as UserRole,
+          institutionId: bookingUser.institutionId,
+        }),
         {
           resourceId: resource.id,
           startTime: start,
-          endTime: end
+          endTime: end,
         }
       );
 
       success++;
 
-      // Random lifecycle
-      if (Math.random() > 0.5) {
-        await bookingService.approve(
-          {
-            id: user.id,
-            role: user.role,
-            institutionId: user.institutionId
-          },
-          booking.id
-        );
-      } else if (Math.random() > 0.7) {
-        await bookingService.reject(
-          {
-            id: user.id,
-            role: user.role,
-            institutionId: user.institutionId
-          },
-          booking.id
-        );
-      }
+      if (institutionAdmin && Math.random() > 0.5) {
+        const adminActor = UserFactory.create({
+          id: institutionAdmin.id,
+          email: institutionAdmin.email,
+          role: institutionAdmin.role as unknown as UserRole,
+          institutionId: institutionAdmin.institutionId,
+        });
 
-    } catch (err) {
-      if (err instanceof DomainError) {
+        if (Math.random() > 0.7) {
+          await bookingService.reject(adminActor, booking.id);
+        } else {
+          await bookingService.approve(adminActor, booking.id);
+        }
+      }
+    } catch (error) {
+      if (error instanceof DomainError) {
         failed++;
       } else {
-        throw err;
+        throw error;
       }
     }
   }
 
   console.log(`Bookings → Success: ${success}, Failed (conflicts): ${failed}`);
-
   console.log("Seeding completed");
 }
 
 main()
-  .catch((e) => {
-    console.error("Seed failed:", e);
+  .catch((error) => {
+    console.error("Seed failed:", error);
     process.exit(1);
   })
   .finally(async () => {

@@ -1,75 +1,70 @@
-// import { Router } from "express";
-// import { BookingController } from "../controllers/BookingController";
-// import { authMiddleware } from "../middleware/auth.middleware";
-// import { requirePermission } from "../middleware/role.middleware";
-
-// const router = Router();
-// const controller = new BookingController();
-
-// router.use(authMiddleware);
-
-// router.post("/", controller.create);
-// router.get("/me", controller.myBookings);
-
-// router.post("/:id/cancel", controller.cancel);
-// router.post("/:id/approve", requirePermission(u => ["ADMIN", "SUPER_ADMIN"].includes(u.role)), controller.approve);
-// router.post("/:id/reject", requirePermission(u => ["ADMIN", "SUPER_ADMIN"].includes(u.role)), controller.reject);
-
-// export default router;
-
 import { Router } from "express";
 import { BookingController } from "../controllers/BookingController";
-import { BookingService } from "../services/BookingService";
 import { authMiddleware } from "../middleware/auth.middleware";
 import { institutionGuard } from "../middleware/InstitutionMiddleware";
 import { requirePermission } from "../middleware/role.middleware";
 import { validate } from "../middleware/validate.middleware";
 import {
-  createBookingSchema,
-  bookingIdParamSchema,
+  bookingCreateSchema,
+  bookingParamSchema,
+  bookingQuerySchema,
+  bookingUpdateSchema,
 } from "../validators/booking.validator";
 
 const router = Router();
+const controller = new BookingController();
 
-const bookingService = new BookingService();
-const controller = new BookingController(bookingService);
+router.use(authMiddleware, institutionGuard);
 
-// CREATE
 router.post(
   "/",
-  authMiddleware,
-  institutionGuard,
-  validate(createBookingSchema),
+  validate(bookingCreateSchema),
   controller.create
 );
 
-// APPROVE
+router.get(
+  "/",
+  validate(bookingQuerySchema, "query"),
+  controller.getAll
+);
+
+router.get(
+  "/:id",
+  validate(bookingParamSchema, "params"),
+  controller.getById
+);
+
+router.patch(
+  "/:id",
+  validate(bookingParamSchema, "params"),
+  validate(bookingUpdateSchema),
+  controller.update
+);
+
+router.delete(
+  "/:id",
+  validate(bookingParamSchema, "params"),
+  controller.delete
+);
+
+router.patch(
+  "/:id/cancel",
+  validate(bookingParamSchema, "params"),
+  controller.cancel
+);
+
 router.patch(
   "/:id/approve",
-  authMiddleware,
-  institutionGuard,
-  validate(bookingIdParamSchema, "params"),
-  requirePermission((u) => u.canApproveBooking()),
+  validate(bookingParamSchema, "params"),
+  requirePermission((user) => user.canApproveBooking()),
   controller.approve
 );
 
-// REJECT
 router.patch(
   "/:id/reject",
-  authMiddleware,
-  institutionGuard,
-  validate(bookingIdParamSchema, "params"),
-  requirePermission((u) => u.canApproveBooking()),
+  validate(bookingParamSchema, "params"),
+  requirePermission((user) => user.canApproveBooking()),
   controller.reject
-);
-
-// CANCEL
-router.patch(
-  "/:id/cancel",
-  authMiddleware,
-  institutionGuard,
-  validate(bookingIdParamSchema, "params"),
-  controller.cancel
 );
 
 export default router;
