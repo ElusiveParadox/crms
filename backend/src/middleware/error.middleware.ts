@@ -7,11 +7,11 @@ export const errorHandler = (
   res: Response,
   _next: NextFunction
 ): void => {
-  if (err instanceof DomainError) {
-    res.status(err.statusCode).json({
+  if (err instanceof DomainError || (err as any).name === "DomainError") {
+    res.status((err as DomainError).statusCode || 400).json({
       success: false,
       error: {
-        message: err.message,
+        message: (err as Error).message,
       },
     });
     return;

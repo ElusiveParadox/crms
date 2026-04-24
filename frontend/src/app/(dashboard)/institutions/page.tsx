@@ -9,12 +9,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/api";
 
-type Resource = {
+type Institution = {
   id: string;
   name: string;
-  type: string;
-  capacity: number;
-  isActive: boolean;
+  domain: string | null;
 };
 
 type ListResponse<T> = {
@@ -25,32 +23,30 @@ type ListResponse<T> = {
 
 const limit = 10;
 
-export default function ResourcesPage() {
+export default function InstitutionsPage() {
   const { user } = useAuth();
-  const [resources, setResources] = useState<Resource[]>([]);
+  const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
-
   const [name, setName] = useState("");
-  const [type, setType] = useState("");
-  const [capacity, setCapacity] = useState("");
+  const [domain, setDomain] = useState("");
 
   const load = async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await api.get<ListResponse<Resource>>("/resources", {
+      const response = await api.get<ListResponse<Institution>>("/institutions", {
         params: { page, limit },
       });
-      setResources(response.data.data);
+      setInstitutions(response.data.data);
       setTotal(response.data.meta?.total ?? 0);
     } catch (err) {
       const e = err as AxiosError<{ error?: { message?: string } }>;
-      setError(e.response?.data?.error?.message ?? "Failed to fetch resources");
-      setResources([]);
+      setError(e.response?.data?.error?.message ?? "Failed to fetch institutions");
+      setInstitutions([]);
     } finally {
       setLoading(false);
     }
@@ -61,14 +57,13 @@ export default function ResourcesPage() {
   }, [page]);
 
   const create = async () => {
-    if (!(user?.role === "ADMIN" || user?.role === "SUPER_ADMIN")) return;
-    if (!name || !type || !capacity) return;
+    if (user?.role !== "SUPER_ADMIN") return;
+    if (!name) return;
     setCreating(true);
     try {
-      await api.post("/resources", { name, type, capacity: Number(capacity) });
+      await api.post("/institutions", { name, domain: domain || undefined });
       setName("");
-      setType("");
-      setCapacity("");
+      setDomain("");
       await load();
     } finally {
       setCreating(false);
@@ -80,25 +75,19 @@ export default function ResourcesPage() {
   return (
     <div className="space-y-6">
       <Card className="p-4">
-        <h1 className="mb-4 text-xl font-semibold text-[var(--text)]">Resources</h1>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Resource name" />
-          <Input value={type} onChange={(event) => setType(event.target.value)} placeholder="Type" />
-          <Input
-            type="number"
-            min={1}
-            value={capacity}
-            onChange={(event) => setCapacity(event.target.value)}
-            placeholder="Capacity"
-          />
-          <Button
-            loading={creating}
-            onClick={create}
-            disabled={!(user?.role === "ADMIN" || user?.role === "SUPER_ADMIN")}
-          >
+        <h1 className="mb-4 text-xl font-semibold text-[var(--text)]">Institutions</h1>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Institution name" />
+          <Input value={domain} onChange={(event) => setDomain(event.target.value)} placeholder="Domain" />
+          <Button loading={creating} onClick={create} disabled={user?.role !== "SUPER_ADMIN"}>
             Create
           </Button>
         </div>
+        {user?.role !== "SUPER_ADMIN" ? (
+          <p className="mt-3 text-xs text-[var(--muted)]">
+            Institution creation is restricted to SUPER_ADMIN.
+          </p>
+        ) : null}
       </Card>
 
       <Card className="p-0">
@@ -110,26 +99,22 @@ export default function ResourcesPage() {
           </div>
         ) : error ? (
           <div className="p-4 text-sm text-[var(--text)]">{error}</div>
-        ) : resources.length === 0 ? (
-          <div className="p-6 text-sm text-[var(--muted)]">No resources found.</div>
+        ) : institutions.length === 0 ? (
+          <div className="p-6 text-sm text-[var(--muted)]">No institutions found.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--card-border)] text-left text-xs text-[var(--muted)]">
                   <th className="px-4 py-3">Name</th>
-                  <th className="px-4 py-3">Type</th>
-                  <th className="px-4 py-3">Capacity</th>
-                  <th className="px-4 py-3">Active</th>
+                  <th className="px-4 py-3">Domain</th>
                 </tr>
               </thead>
               <tbody>
-                {resources.map((item) => (
+                {institutions.map((item) => (
                   <tr key={item.id} className="border-b border-[var(--card-border)] last:border-0">
                     <td className="px-4 py-3 text-[var(--text)]">{item.name}</td>
-                    <td className="px-4 py-3 text-[var(--text)]">{item.type}</td>
-                    <td className="px-4 py-3 text-[var(--text)]">{item.capacity}</td>
-                    <td className="px-4 py-3 text-[var(--text)]">{item.isActive ? "Yes" : "No"}</td>
+                    <td className="px-4 py-3 text-[var(--text)]">{item.domain ?? "-"}</td>
                   </tr>
                 ))}
               </tbody>

@@ -19,39 +19,84 @@ export class UserService {
     email: string;
     password: string;
     role: string;
-    institutionId?: string;
+    institutionName?: string;
   }) {
-    const { email, password, role, institutionId } = data;
+    const { email, password, role, institutionName } = data;
 
     if (!email || !password || !role) {
       throw new DomainError("Missing required fields");
     }
 
-    const existing = await prisma.user.findUnique({
-      where: { email },
-    });
-
+    const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
-      throw new DomainError("Email already in use");
+      throw new DomainError("Email already in use", 409);
+    }
+
+    const emailDomain = email.split("@")[1]?.toLowerCase();
+    if (!emailDomain) {
+      throw new DomainError("Invalid email address", 400);
+    }
+
+    let institutionId: string | null = null;
+
+    if (institutionName?.trim()) {
+      const trimmedName = institutionName.trim();
+
+      if (role === "SUPER_ADMIN") {
+        const existingInstitution = await prisma.institution.findFirst({
+          where: { name: { equals: trimmedName, mode: "insensitive" }, deletedAt: null },
+        });
+        if (existingInstitution) {
+          throw new DomainError("Institution already exists", 409);
+        }
+      } else {
+        const foundInstitution = await prisma.institution.findFirst({
+          where: { name: { equals: trimmedName, mode: "insensitive" }, deletedAt: null },
+        });
+        if (!foundInstitution) {
+          throw new DomainError("Institution not found", 404);
+        }
+        
+        if (foundInstitution.domain && foundInstitution.domain !== emailDomain) {
+          throw new DomainError(`Email domain must be @${foundInstitution.domain} to join this institution`, 403);
+        }
+
+        institutionId = foundInstitution.id;
+      }
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
+    const userId = crypto.randomUUID();
 
-    const domainUser = UserFactory.create({
-      id: crypto.randomUUID(),
-      email,
-      role: role as unknown as UserRole,
-      institutionId: institutionId ?? null,
-    });
+    return prisma.$transaction(async (tx) => {
+      if (role === "SUPER_ADMIN" && institutionName?.trim()) {
+        const institution = await tx.institution.create({
+          data: { 
+            name: institutionName.trim(),
+            domain: emailDomain 
+          },
+        });
 
-    return prisma.user.create({
-      data: {
-        id: domainUser.id,
-        email,
-        passwordHash,
-        role: role as Role,
-        institutionId: institutionId ?? null,
-      },
+        return tx.user.create({
+          data: {
+            id: userId,
+            email,
+            passwordHash,
+            role: role as Role,
+            institutionId: institution.id,
+          },
+        });
+      }
+
+      return tx.user.create({
+        data: {
+          id: userId,
+          email,
+          passwordHash,
+          role: role as Role,
+          institutionId,
+        },
+      });
     });
   }
 

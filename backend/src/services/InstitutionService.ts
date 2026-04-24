@@ -238,6 +238,11 @@ export class InstitutionService {
       throw new DomainError("User already belongs to an institution", 400);
     }
 
+    const emailDomain = user.email.split("@")[1]?.toLowerCase();
+    if (institution.domain && institution.domain !== emailDomain) {
+      throw new DomainError(`Email domain must be @${institution.domain} to join this institution`, 403);
+    }
+
     await prisma.user.update({
       where: { id: userId },
       data: {

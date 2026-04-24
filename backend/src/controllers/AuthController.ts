@@ -28,7 +28,8 @@ export class AuthController {
       const domainUser = UserMapper.toDomain(user as any);
       const token = jwt.sign(
         { 
-          id: user.id, 
+          id: user.id,
+          email: user.email,
           role: user.role, 
           institutionId: user.institutionId 
         },
@@ -40,6 +41,25 @@ export class AuthController {
         token,
         user: UserMapper.toDTO(domainUser),
       });
+    } catch (err) {
+      next(err);
+    }
+  }
+  async me(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = req.user!;
+      res.json({
+        success: true,
+        data: UserMapper.toDTO(user),
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async logout(_req: Request, res: Response, next: NextFunction) {
+    try {
+      res.json({ success: true, message: "Logged out" });
     } catch (err) {
       next(err);
     }

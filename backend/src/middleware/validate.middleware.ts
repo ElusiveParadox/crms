@@ -12,7 +12,12 @@ export const validate =
         throw new DomainError("Validation failed", 400);
       }
 
-      req[source] = result.data;
+      Object.defineProperty(req, source, {
+        value: result.data,
+        writable: true,
+        configurable: true,
+        enumerable: true,
+      });
       next();
     } catch (err) {
       next(err);
