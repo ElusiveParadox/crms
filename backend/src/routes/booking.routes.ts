@@ -10,6 +10,7 @@ router.use(authMiddleware);
 
 router.post("/", controller.create);
 router.get("/me", controller.myBookings);
+router.get("/all", requirePermission(u => ["ADMIN", "SUPER_ADMIN"].includes(u.role)), controller.getAll);
 
 router.post("/:id/cancel", controller.cancel);
 router.post("/:id/approve", requirePermission(u => ["ADMIN", "SUPER_ADMIN"].includes(u.role)), controller.approve);

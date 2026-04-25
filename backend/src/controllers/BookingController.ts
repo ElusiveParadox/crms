@@ -48,6 +48,23 @@ export class BookingController {
 
   /**
    * @swagger
+   * /bookings/all:
+   *   get:
+   *     summary: Get all bookings (Admin)
+   *     tags: [Bookings]
+   */
+  async getAll(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = (req as any).user;
+      const data = await service.getAllBookings(user);
+      res.json(data);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * @swagger
    * /bookings/{id}/cancel:
    *   post:
    *     summary: Cancel booking

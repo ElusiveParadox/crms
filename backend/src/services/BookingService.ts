@@ -96,6 +96,14 @@ export class BookingService {
     });
   }
 
+  // ALL BOOKINGS (Admin)
+  async getAllBookings(user: any) {
+    return prisma.booking.findMany({
+      include: { resource: true, user: true },
+      orderBy: { startTime: "desc" }
+    });
+  }
+
   // CANCEL
   async cancel(user: any, bookingId: string) {
     const bookingRaw = await prisma.booking.findUnique({

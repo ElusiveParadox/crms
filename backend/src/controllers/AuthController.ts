@@ -29,6 +29,7 @@ export class AuthController {
       const token = jwt.sign(
         { 
           id: user.id, 
+          email: user.email,
           role: user.role, 
           institutionId: user.institutionId 
         },

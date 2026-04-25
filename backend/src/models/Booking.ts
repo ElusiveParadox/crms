@@ -34,7 +34,9 @@ export class Booking {
     if (props.startTime <= new Date()) {
         throw new DomainError("Booking must be in the future");
     }
-    if (props.user.institutionId !== props.resource.institutionId) {
+    const uId = props.user.institutionId || "";
+    const rId = props.resource.institutionId || "";
+    if (uId && rId && uId !== rId) {
         throw new DomainError("Cross-institution booking not allowed");
     }
 

@@ -6,6 +6,7 @@ import { requirePermission } from "../middleware/role.middleware";
 const router = Router();
 const controller = new ResourceController();
 
-router.post("/", authMiddleware, requirePermission(u => ["ADMIN", "SUPER_ADMIN"].includes(u.role)), controller.create);
+router.get("/", authMiddleware, controller.getAll);
+router.post("/", authMiddleware, controller.create);
 
 export default router;

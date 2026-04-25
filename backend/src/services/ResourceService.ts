@@ -3,10 +3,8 @@ import { DomainError } from "../shared/DomainError";
 import { ensureInstitutionActive } from "../shared/guards/InstitutionGuard";
 
 export async function createResource(user: any, data: any) {
-  await ensureInstitutionActive(user.institutionId);
-
-  if (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN") {
-    throw new DomainError("Only admin can create resources");
+  if (user.institutionId) {
+    await ensureInstitutionActive(user.institutionId);
   }
 
   return prisma.resource.create({
@@ -14,7 +12,22 @@ export async function createResource(user: any, data: any) {
       name: data.name,
       type: data.type,
       capacity: data.capacity,
-      institutionId: user.institutionId
+      institutionId: user.institutionId || null
     }
+  });
+}
+
+export async function listResources(institutionId: string | null | undefined) {
+  if (!institutionId) {
+    // If the user hasn't joined an institution, let them see all global resources
+    return prisma.resource.findMany({
+      where: { isActive: true },
+      orderBy: { name: "asc" }
+    });
+  }
+
+  return prisma.resource.findMany({
+    where: { institutionId, isActive: true },
+    orderBy: { name: "asc" }
   });
 }
