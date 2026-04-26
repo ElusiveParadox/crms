@@ -19,7 +19,7 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("STUDENT");
-  const [institutionId, setInstitutionId] = useState("");
+  const [institutionName, setInstitutionName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -31,7 +31,7 @@ export default function RegisterPage() {
         email,
         password,
         role,
-        ...(institutionId && { institutionId }),
+        ...(institutionName && { institutionName }),
       };
 
       await api.post("/auth/register", payload);
@@ -133,17 +133,17 @@ export default function RegisterPage() {
                   exit={{ opacity: 0, height: 0, marginTop: 0 }}
                   className="space-y-1 overflow-hidden"
                 >
-                  <label className="text-sm font-medium text-gray-300 ml-1">Institution ID (Optional)</label>
+                  <label className="text-sm font-medium text-gray-300 ml-1">Institution Name (Optional)</label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                       <Building2 className="h-5 w-5 text-gray-500" />
                     </div>
                     <input
                       type="text"
-                      value={institutionId}
-                      onChange={(e) => setInstitutionId(e.target.value)}
+                      value={institutionName}
+                      onChange={(e) => setInstitutionName(e.target.value)}
                       className="input-glass block w-full pl-11 pr-4 py-3 rounded-xl text-sm placeholder-gray-500"
-                      placeholder="e.g. inst-12345"
+                      placeholder="e.g. Acme University"
                     />
                   </div>
                 </motion.div>
