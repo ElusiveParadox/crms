@@ -60,5 +60,53 @@ The PostgreSQL database employs a thoroughly normalized relational structure:
 ## 7. Future Scaling Capabilities
 * **WebSockets (Socket.io) Pluggability:** Because the EventBus & Observer patterns completely decouple the business logic from event handling, implementing real-time UI WebSocket popups natively requires absolutely zero changes to the core System Controllers. A simple `SocketObserver` can be attached seamlessly to the central EventBus in future iteration scopes without causing regression bugs.
 
-## 8. Summary
+## 8. SOLID Principles Implementation
+
+CRMS backend demonstrates SOLID principles through disciplined OO design:
+
+### A. Single Responsibility Principle (SRP)
+* **Files:** `services/BookingService.ts`, `services/UserService.ts`, `mappers/UserMapper.ts`
+* **Usage:** Each class has one reason to change. `BookingService` solely manages booking CRUD/conflicts/approvals. `UserService` handles auth/registration. Mappers convert persistence<->domain without business logic.
+
+### B. Open-Closed Principle (OCP)
+* **Files:** `patterns/strategy/ConflictStrategy.ts`, `StrictConflictStrategy.ts`, `PriorityConflictStrategy.ts`; `patterns/state/BookingState.ts`
+* **Usage:** `BookingService` closed for modification but open for extension via injectable `ConflictStrategy` interface (swap algorithms). State pattern allows new booking states without changing core logic.
+
+### C. Liskov Substitution Principle (LSP)
+* **Files:** `models/User.ts`, `models/Admin.ts`, `models/Student.ts`, `models/Faculty.ts`
+* **Usage:** Subclasses (`Admin`, `Student`) substitute `User` base; `override` methods (e.g., `canApproveBooking()`) preserve contracts, enabling polymorphic use in services.
+
+### D. Interface Segregation Principle (ISP)
+* **Files:** `patterns/strategy/ConflictStrategy.ts` (1 method), `patterns/state/BookingState.ts` (focused lifecycle ops), `patterns/observer/Observer.ts`
+* **Usage:** Clients implement only relevant methods; no fat interfaces forcing unused code.
+
+### E. Dependency Inversion Principle (DIP)
+* **Files:** `patterns/factory/UserFactory.ts`, `services/BookingService.ts`
+* **Usage:** Services depend on abstractions (`User` interface, `ConflictStrategy`); `UserFactory` inverts object creation control. Injections via constructors/params.
+
+## 9. Advanced Software Design Patterns
+
+Beyond core GoF patterns, CRMS employs advanced architectural patterns for enterprise scalability:
+
+### A. Domain-Driven Design (DDD) Layers
+* **Files:** `models/`, `services/`, `mappers/`
+* **Usage:** Strict separation of Domain (rich `User`/`Booking` entities with behavior), Application (services orchestrate), Infrastructure (Prisma mappers). Ubiquitous language (e.g., `ensureInstitutionScoped`, `DomainError`).
+
+### B. CQRS (Command Query Responsibility Segregation) Elements
+* **Files:** `services/BookingService.ts` (commands: create/update; queries: getAll/getById)
+* **Usage:** Mutations separated from reads; potential for future event sourcing via `EventBus`.
+
+### C. Repository Pattern (via Mappers)
+* **Files:** `mappers/UserMapper.ts`, `InstitutionMapper.ts`
+* **Usage:** Abstracts data access; domain unaware of Prisma specifics.
+
+### D. Event-Driven Architecture (Advanced Pub/Sub)
+* **Files:** `events/EventBus.ts`, `patterns/observer/`
+* **Usage:** Decoupled notifications; extensible for microservices/Saga pattern.
+
+### E. Multi-Tenancy with Contextual Guarding
+* **Files:** `middleware/auth.middleware.ts`, services guards
+* **Usage:** Institution-scoped queries prevent data leakage.
+
+## 10. Summary
 The CRMS represents a structurally sound, enterprise-ready architecture. From zero-downtime deployment on Vercel/Render to strict TypeScript integration and proven GoF software engineering patterns, the system is fundamentally designed to prevent race conditions, scale reliably, and offer an incredibly fluid user experience.
